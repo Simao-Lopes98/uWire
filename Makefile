@@ -1,5 +1,6 @@
 # Target microcontroller
 MCU = atmega328p
+
 # Target clock frequency
 F_CPU = 16000000UL
 
@@ -7,6 +8,7 @@ F_CPU = 16000000UL
 SRC_DIR = src
 BUILD_DIR = build
 FLASH_DIR = flash
+INCLUDE = include
 
 # Tools
 CC = avr-gcc
@@ -14,8 +16,7 @@ OBJCOPY = avr-objcopy
 AVRDUDE = avrdude
 
 # Flags
-CFLAGS = -mmcu=$(MCU) -Wall -DF_CPU=$(F_CPU) -Os
-LDFLAGS = -mmcu=$(MCU) -nostartfiles 
+CFLAGS = -mmcu=$(MCU) -Wall -DF_CPU=$(F_CPU) -Os -std=gnu11 -I$(INCLUDE)
 
 # Port for avrdude (change if needed)
 PORT = /dev/ttyACM0
@@ -30,13 +31,13 @@ HEX = $(FLASH_DIR)/main.hex
 # Default target (build everything)
 all: $(HEX)
 
-# Assemble .s file into .o
+# .c file into .o
 $(OBJ): $(SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link .o to .elf
 $(ELF): $(OBJ)
-	$(CC) $^ -o $@
+	$(CC) -mmcu=$(MCU) $^ -o $@
 
 # Convert .elf to .hex
 $(HEX): $(ELF)
