@@ -2,6 +2,7 @@
 /build/prj.elf
 /build/main.o
 /build/tasks.o
+/build/serial.o
 
 # Ignore flash contents
 /flash/prj.hex
