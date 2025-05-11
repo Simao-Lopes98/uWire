@@ -1,6 +1,7 @@
 # Ignore build artifacts
-/build/main.elf
+/build/prj.elf
 /build/main.o
+/build/tasks.o
 
 # Ignore flash contents
-/flash/main.hex
+/flash/prj.hex
