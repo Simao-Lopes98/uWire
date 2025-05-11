@@ -9,6 +9,7 @@ SRC_DIR = src
 BUILD_DIR = build
 FLASH_DIR = flash
 INCLUDE = include
+UWIRE_DIR = uWire
 
 # Tools
 CC = avr-gcc
@@ -16,17 +17,21 @@ OBJCOPY = avr-objcopy
 AVRDUDE = avrdude
 
 # Flags
-CFLAGS = -mmcu=$(MCU) -Wall -DF_CPU=$(F_CPU) -Os -std=gnu11 -I$(INCLUDE)
+CFLAGS = -mmcu=$(MCU) -Wall -DF_CPU=$(F_CPU) -Os -std=gnu11 -I$(INCLUDE)\
+ -I$(UWIRE_DIR)
 
 # Port for avrdude (change if needed)
 PORT = /dev/ttyACM0
 BAUD = 115200
 
 # File names
-SRC = $(SRC_DIR)/main.c
+SRC = $(SRC_DIR)/main.c 
+TASK_SRC = $(UWIRE_DIR)/tasks.c
 OBJ = $(BUILD_DIR)/main.o
-ELF = $(BUILD_DIR)/main.elf
-HEX = $(FLASH_DIR)/main.hex
+TASK_OBJ = $(BUILD_DIR)/tasks.o
+
+ELF = $(BUILD_DIR)/prj.elf
+HEX = $(FLASH_DIR)/prj.hex
 
 # Default target (build everything)
 all: $(HEX)
@@ -35,8 +40,11 @@ all: $(HEX)
 $(OBJ): $(SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(TASK_OBJ): $(TASK_SRC)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Link .o to .elf
-$(ELF): $(OBJ)
+$(ELF): $(OBJ) $(TASK_OBJ)
 	$(CC) -mmcu=$(MCU) $^ -o $@
 
 # Convert .elf to .hex

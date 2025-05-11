@@ -16,9 +16,9 @@ Common definitions
 
 // Typedefs
 typedef int STATUS;              // Status
-typedef __uint8_t UINT8;
-typedef __uint16_t UINT16;
-typedef __uint32_t UINT32;
-typedef __uint64_t UINT64;
+typedef uint8_t UINT8;
+typedef uint16_t UINT16;
+typedef uint32_t UINT32;
+typedef uint64_t UINT64;
 
 #endif /* COMMON_H */

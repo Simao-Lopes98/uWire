@@ -15,30 +15,49 @@ Program starting point
 
 // Forward declarations
 int main (void);
-LOCAL void timerSetup (void);
+void ledBlink (void);
 
+// Globals
+LOCAL Task_t * ledBlinkTask = NULL;
 
-// Design globals
-LOCAL int ledToggle = 0;
-
-// Main
+// Main - Entry point
 int main (void)
-{
-    DDRB |= (1 << 4); // Port B configuration
-    
-    
-    timerSetup();
-    
-    // Keep MCU alive
-    while (1)
     {
-        if (1 == ledToggle)
-        {
-            ledToggle = 0;
-            PORTB ^= (1 << 4);
-        }
-        _delay_ms(50);
-    }
+    // Init LED in IO 13
+    DDRB |= (1 << 5);
+
+    /* Create Task */
+    ledBlinkTask = createTask ("ledBlink", ledBlink, NULL);
+
+    (void) startTask (ledBlinkTask);
+
+    /* Init uWire */
+    initScheduler();
     
     return 0;
-}
+    }
+/*
+Test with a simple state-machine.
+TODO: Task Stack Management 
+
+*/
+void ledBlink (void)
+    {
+    printf("Entering task\n");
+    static int state = 0;
+    switch (state)
+        {
+        case 0:
+            PORTB |= (1 << 5);
+            taskDelay(500 / TICK_MS);
+            state = 1;
+            return;
+        case 1:
+            PORTB &= ~(1 << 5);
+            taskDelay(500 / TICK_MS);
+            state = 0;
+            return;
+        default:
+            return;
+        }    
+    }
