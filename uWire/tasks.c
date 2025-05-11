@@ -19,7 +19,7 @@ LOCAL void idleTask(void);
 /* TODO: Turn into linked list */
 LOCAL Task_t * taskTable [TASK_TABLE_SIZE] = {NULL, NULL, NULL};
 
-LOCAL UINT64 tick = 0;  /* Tick counter */
+LOCAL volatile UINT64 tick = 0;  /* Tick counter */
 LOCAL UINT8 taskIndex = 0; /* Index to the task table */
 
 /*******************************************************************************
@@ -140,16 +140,25 @@ LOCAL void runScheduler(void)
         {
         if (tick != oldTick)
             {
-            printf("Entering sched\n");
             oldTick = tick;
             taskCtrl = taskTable [taskIndex];
 
             if (taskCtrl == NULL)
                 {
+                taskIndex++;
+                if (taskIndex == TASK_TABLE_SIZE)
+                    {
+                    taskIndex = 0;
+                    }
                 continue;
                 }
             if (taskCtrl->status == STOPPED)
                 {
+                taskIndex++;
+                if (taskIndex == TASK_TABLE_SIZE)
+                    {
+                    taskIndex = 0;
+                    }
                 continue;
                 }
             if (taskCtrl->status == PENDED)
@@ -158,6 +167,11 @@ LOCAL void runScheduler(void)
                 if (taskCtrl->ticks == 0)
                     {
                     taskCtrl->status = RUNNING;
+                    }
+                taskIndex++;
+                if (taskIndex == TASK_TABLE_SIZE)
+                    {
+                    taskIndex = 0;
                     }
                 continue;
                 }

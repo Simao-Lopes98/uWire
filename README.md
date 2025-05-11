@@ -1,6 +1,17 @@
 # uWire
 Simple RTOS
 
+
+## Phase 1 Goals
+Create a bare-metal task scheduler where each task runs cooperatively—meaning the task voluntarily returns control to the scheduler (no preemption).
+
+* Run multiple "tasks" (functions) pseudo-concurrently. ✔
+* Use a simple round-robin algorithm. ✔
+* Track delays or states using software timers or flags. ✔
+
+## Phase 2 Goals
+
+
 # Make Commands
 
 To compile
@@ -34,9 +45,14 @@ Linux Terminal
 lsusb
 ````
 
-## Phase 1 Goals
-Create a bare-metal task scheduler where each task runs cooperatively—meaning the task voluntarily returns control to the scheduler (no preemption).
+## Using Minicom
 
-* Run multiple "tasks" (functions) pseudo-concurrently.
-* Use a simple round-robin algorithm.
-* Track delays or states using software timers or flags.
+Install Minicom
+```` Bash
+sudo apt-get install minicom
+````
+
+Opening Serial Monitor
+```` Bash
+minicom -D /dev/ttyACM<N> -b <BAUD_RATE>
+````
