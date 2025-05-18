@@ -16,10 +16,6 @@ Program starting point
 
 // Forward declarations
 int main (void);
-void ledBlink (void);
-
-// Globals
-LOCAL Task_t * ledBlinkTask = NULL;
 
 // Main - Entry point
 int main (void)
@@ -30,38 +26,14 @@ int main (void)
     // Init Serial
     serial_init(9600);
 
-    /* Create Task */
-    ledBlinkTask = createTask ("ledBlink", ledBlink, NULL);
-
-    (void) startTask (ledBlinkTask);
-
     /* Init uWire */
     initScheduler();
+
+
+    while (1)
+    {
+
+    }
     
     return 0;
-    }
-/*
-Test with a simple state-machine.
-TODO: Task Stack Management 
-
-*/
-void ledBlink (void)
-    {
-    printf("Entering task\n");
-    static int state = 0;
-    switch (state)
-        {
-        case 0:
-            PORTB |= (1 << 5);
-            taskDelay(500 / TICK_MS);
-            state = 1;
-            return;
-        case 1:
-            PORTB &= ~(1 << 5);
-            taskDelay(500 / TICK_MS);
-            state = 0;
-            return;
-        default:
-            return;
-        }    
     }
