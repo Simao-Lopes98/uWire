@@ -13,6 +13,7 @@
 #define TASK_TABLE_SIZE 3
 
 #define TICK_MS    10 // 1 tick = 10 milliseconds
+#define STACK_SIZE 64
 
 /* typedefs */
 
@@ -28,6 +29,7 @@ typedef enum taskStatus_t
 typedef struct task
     {
     char name [12];                 /* Task Name */
+    UINT8 stack [STACK_SIZE];
     void (*task) (void *argument);  /* Task routine */
     void * argument;                /* Routine arguments */
     taskStatus status;              /* Task status */

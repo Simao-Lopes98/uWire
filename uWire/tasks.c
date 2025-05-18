@@ -1,5 +1,11 @@
 /* tasks.c */
+/*
 
+Task management lib.
+- Manages tasks
+- Tick update
+
+*/
 #include <stdio.h>
 #include <stdlib.h>
 #include <avr/io.h>
@@ -13,6 +19,10 @@
 LOCAL void runScheduler(void);
 LOCAL void timerSetup (void);
 LOCAL void idleTask(void);
+LOCAL void saveContext (void);
+LOCAL void incTick (void);
+LOCAL void switchContext (void);
+LOCAL void restoreContext (void);
 
 /* Globals */
 
@@ -22,8 +32,79 @@ LOCAL Task_t * taskTable [TASK_TABLE_SIZE] = {NULL, NULL, NULL};
 LOCAL volatile UINT64 tick = 0;  /* Tick counter */
 LOCAL UINT8 taskIndex = 0; /* Index to the task table */
 
+void TIMER1_COMPA_vect ( void ) __attribute__ ((signal, naked));
+
 /*******************************************************************************
-Main scheduler for the uWire
+Scheduler helper functions
+*/
+LOCAL void idleTask(void)
+    {
+    /* Idle task does nothing. Add a nop to avoid any watchdog trigger */
+    __asm__ __volatile__ ("nop");
+    return;
+    }
+
+LOCAL void runScheduler(void)
+    {
+    
+    UINT64 oldTick = 1;
+    Task_t * taskCtrl = NULL;
+
+    /* Scheduler */
+    while (1)
+        {
+        if (tick != oldTick)
+            {
+            oldTick = tick;
+            taskCtrl = taskTable [taskIndex];
+
+            if (taskCtrl == NULL)
+                {
+                taskIndex++;
+                if (taskIndex == TASK_TABLE_SIZE)
+                    {
+                    taskIndex = 0;
+                    }
+                continue;
+                }
+            if (taskCtrl->status == STOPPED)
+                {
+                taskIndex++;
+                if (taskIndex == TASK_TABLE_SIZE)
+                    {
+                    taskIndex = 0;
+                    }
+                continue;
+                }
+            if (taskCtrl->status == PENDED)
+                {
+                taskCtrl->ticks--; // Decrement ticks
+                if (taskCtrl->ticks == 0)
+                    {
+                    taskCtrl->status = RUNNING;
+                    }
+                taskIndex++;
+                if (taskIndex == TASK_TABLE_SIZE)
+                    {
+                    taskIndex = 0;
+                    }
+                continue;
+                }
+
+            /* Invoke task routine */
+            taskCtrl->task (taskCtrl->argument);
+
+            taskIndex++;
+            if (taskIndex == TASK_TABLE_SIZE)
+                {
+                taskIndex = 0;
+                }
+            }
+        }
+    }
+
+/*******************************************************************************
+API Tasks functions
 */
 IMPORT void initScheduler(void)
     {
@@ -52,9 +133,9 @@ IMPORT void initScheduler(void)
     runScheduler();
     }
 
-IMPORT Task_t * createTask(const char name[12],
-                         void (* taskRoutine), 
-                         void *arguments)
+IMPORT Task_t * createTask( const char name[12],
+                            void (* taskRoutine), 
+                            void *arguments)
     {
     Task_t * taskCtrl = NULL;
     
@@ -122,76 +203,6 @@ IMPORT STATUS startTask (Task_t * taskCtrl)
     return OK;
     }
 
-LOCAL void idleTask(void)
-    {
-    /* TODO: Add some more processing */
-    __asm__ __volatile__ ("NOP");
-    return;
-    }
-
-LOCAL void runScheduler(void)
-    {
-    
-    UINT64 oldTick = 1;
-    Task_t * taskCtrl = NULL;
-
-    /* Scheduler */
-    while (1)
-        {
-        if (tick != oldTick)
-            {
-            oldTick = tick;
-            taskCtrl = taskTable [taskIndex];
-
-            if (taskCtrl == NULL)
-                {
-                taskIndex++;
-                if (taskIndex == TASK_TABLE_SIZE)
-                    {
-                    taskIndex = 0;
-                    }
-                continue;
-                }
-            if (taskCtrl->status == STOPPED)
-                {
-                taskIndex++;
-                if (taskIndex == TASK_TABLE_SIZE)
-                    {
-                    taskIndex = 0;
-                    }
-                continue;
-                }
-            if (taskCtrl->status == PENDED)
-                {
-                taskCtrl->ticks--; // Decrement ticks
-                if (taskCtrl->ticks == 0)
-                    {
-                    taskCtrl->status = RUNNING;
-                    }
-                taskIndex++;
-                if (taskIndex == TASK_TABLE_SIZE)
-                    {
-                    taskIndex = 0;
-                    }
-                continue;
-                }
-
-            /* Invoke task routine */
-            taskCtrl->task (taskCtrl->argument);
-
-            taskIndex++;
-            if (taskIndex == TASK_TABLE_SIZE)
-                {
-                taskIndex = 0;
-                }
-            }
-        }
-    }
-
-/*******************************************************************************
-Task Helpers
-*/
-
 IMPORT Task_t * getCurrentTask (void)
     {
     return taskTable [taskIndex];
@@ -210,11 +221,100 @@ IMPORT void taskDelay (UINT32 ticks)
     currentTask->ticks = ticks; /* ticks to be counted */
     }
 
-/* Tick Managment */
+/*******************************************************************************
+Tick and Context Saving/Restoring managment
+*/
 
-ISR(TIMER1_COMPA_vect)
+ISR (TIMER1_COMPA_vect)
+    {
+
+    /* Save context */
+    saveContext();
+
+    /* 
+    Increment tick count and check if the new tick value has caused a delay 
+    period to expire 
+    */
+    incTick();
+
+    /* 
+    Verify if a context switch is required.
+    Switch to the context of the task made ready to run by incTick()
+    */
+    switchContext ();
+
+    /*
+    Restore the context. If a context switch has occurend this will restore 
+    the context of the interrupted task.
+    */
+    restoreContext();
+
+
+    /* Return from ISR */
+    __asm__ __volatile__ ("reti");
+    }
+
+LOCAL void saveContext ( void )
+    {
+    __asm__ __volatile__ (
+    "push r0 nt"
+    "in r0, __SREG__ nt"
+    "cli nt"
+    "push r0 nt"
+    "push r1 nt"
+    "clr r1 nt"
+    "push r2 nt"
+    "push r3 nt"
+    "push r4 nt"
+    "push r5 nt"
+    "push r6 nt"
+    "push r7 nt"
+    "push r8 nt"
+    "push r9 nt"
+    "push r10 nt"
+    "push r11 nt"
+    "push r12 nt"
+    "push r13 nt"
+    "push r14 nt"
+    "push r15 nt"
+    "push r16 nt"
+    "push r17 nt"
+    "push r18 nt"
+    "push r19 nt"
+    "push r20 nt"
+    "push r21 nt"
+    "push r22 nt"
+    "push r23 nt"
+    "push r24 nt"
+    "push r25 nt"
+    "push r26 nt"
+    "push r27 nt"
+    "push r28 nt"
+    "push r29 nt"
+    "push r30 nt"
+    "push r31 nt"
+    "lds r26, pxCurrentTCB nt"
+    "lds r27, pxCurrentTCB + 1 nt"
+    "in r0, __SP_L__ nt"
+    "st x+, r0 nt"
+    "in r0, __SP_H__ nt"
+    "st x+, r0 nt"
+    );
+    }
+
+LOCAL void incTick (void)
     {
     tick++;
+    }
+
+LOCAL void switchContext (void)
+    {
+    ...
+    }
+
+LOCAL void restoreContext (void)
+    {
+    ...
     }
 
 /*
