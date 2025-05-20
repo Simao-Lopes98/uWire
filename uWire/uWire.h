@@ -15,43 +15,29 @@
 
 /* typedefs */
 
-/* Enum */
-typedef enum taskStatus_t
-    {
-    RUNNING = 0,
-    PENDED,
-    STOPPED,
-    END_STATUS
-    }taskStatus;
+
+/* Function pointer */
+typedef void (* wTaskHandler) ();
 
 typedef struct task
     {
-    UINT16 * stackPtr;              /* HAS TO BE 1st! Task Stack pointer */
+    void * stackPtr;                /* HAS TO BE 1st! Task Stack pointer */
     UINT16 stackSize;               /* Task Stack Size*/
     char name [12];                 /* Task Name */
-    void (*task) (void *argument);  /* Task routine */
-    void * argument;                /* Routine arguments */
-    taskStatus status;              /* Task status */
-    UINT8 prio;                     /* TODO: Priority */
-    UINT8 id;
-    } Task_t;
+    wTaskHandler taskFn;            /* Task routine */
+    } wTask_t;
 
 /* Task Node for task list */
 typedef struct taskNode
     {
-    Task_t * task;
+    wTask_t * task;
     struct taskNode * next;
-    } TaskNode_t;
+    } wTaskNode_t;
 
 /* Forward section */
 IMPORT void initScheduler(void);
-IMPORT Task_t * createTask( void (* taskRoutine), 
-                            void *arguments,
+IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             const char name[12],
-                            UINT16 stackSize,
-                            UINT8 prio);
-IMPORT STATUS startTask (Task_t * taskCtrl);
-
-
+                            UINT16 stackSize);
 
 #endif /* UWIRE_H */

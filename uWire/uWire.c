@@ -17,115 +17,62 @@ Task management lib.
 
 /* Forward section */
 LOCAL void timerSetup (void);
-LOCAL void idleTask(void);
-LOCAL void saveContext (void);
-LOCAL void incTick (void);
-LOCAL void switchContext (void);
-LOCAL void restoreContext (void);
-LOCAL void fillStackContext (Task_t * taskCtrl);
+LOCAL void fillStackContext (wTask_t * taskCtrl);
+
+void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
 
 /* Globals */
 
-LOCAL TaskNode_t * taskListHead = NULL; /* Head of Task List */
-
-LOCAL volatile UINT16 * currentTaskContext = NULL; /* Task Saving context */
+LOCAL wTaskNode_t * taskListHead = NULL; /* Head of Task List */
 
 LOCAL volatile UINT64 tick = 0;  /* Tick counter */
-
-void TIMER1_COMPA_vect ( void ) __attribute__ ((signal, naked));
-
-LOCAL void idleTask(void)
-    {
-    /* Idle task does nothing. Add a nop to avoid any watchdog trigger */
-    __asm__ __volatile__ ("nop");
-    return;
-    }
 
 /*******************************************************************************
 API Tasks functions
 */
 IMPORT void initScheduler(void)
     {
-    STATUS ret = ERROR;
-    Task_t * taskIdle = NULL;
-    
-    /* createTask */
-    taskIdle = createTask (idleTask , NULL, "idle", MINIMAL_STACK_SIZE, 0);
-    if (taskIdle == NULL)
-        {
-        /* TODO: Add Critical ERROR LOG */
-        return;
-        }
-    
-    /* Init task list */
-    taskListHead = (TaskNode_t *) calloc (1, sizeof(TaskNode_t));
-    if (taskListHead == NULL)
-        {
-        /* TODO: Add Critical ERROR LOG */
-        return;
-        }
-    
-    taskListHead->task = taskIdle;
-    taskListHead->next = NULL;
-    
-    /* Start idleTask */
-    ret = startTask (taskIdle);
-    if (ret == ERROR)
-        {
-        /* TODO: Add Critical ERROR LOG */
-        return;
-        }
-    
-    /* Set the currentTaskContext to taskIdle */
-    currentTaskContext = taskIdle->stackPtr;
 
     /* Create tick counter */
     timerSetup();
     }
 
-IMPORT Task_t * createTask( void (* taskRoutine), 
-                            void *arguments,
+IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             const char name[12],
-                            UINT16 stackSize,
-                            UINT8 prio)
+                            UINT16 stackSize)
     {
-    Task_t * taskCtrl = NULL;
-    TaskNode_t * node = NULL;
-    TaskNode_t * tempNode = NULL;
+    wTask_t * taskCtrl = NULL;
+    wTaskNode_t * node = NULL;
+    wTaskNode_t * tempNode = NULL;
     
     /* Sanity checks */
-    if (name == NULL)
-        {
-        return NULL;
-        }
-    
-    if (taskRoutine == NULL)
+    if (taskFn == NULL || name == NULL)
         {
         return NULL;
         }
 
-    taskCtrl = (Task_t *) calloc (1, sizeof (Task_t));
+    /* Create task ctrl */
+    taskCtrl = (wTask_t *) calloc (1, sizeof (wTask_t));
     if ( taskCtrl == NULL)
         {
         return NULL;
         }
     
     (void) strcpy (taskCtrl->name, name);
-    taskCtrl->task = taskRoutine;
-    taskCtrl->argument = arguments;
-    taskCtrl->status = STOPPED;
+    taskCtrl->taskFn = taskFn;
     taskCtrl->stackSize = stackSize;
 
-    taskCtrl->stackPtr = (UINT16 *) malloc (stackSize);
+    taskCtrl->stackPtr = (void *) malloc (stackSize);
     (void) memset (taskCtrl->stackPtr, 0, stackSize);
 
+    /* Fill stack context */
     fillStackContext(taskCtrl);
 
     /* Create a new node and add to the list */
-    node = (TaskNode_t *) calloc (1, sizeof(TaskNode_t));
+    node = (wTaskNode_t *) calloc (1, sizeof(wTaskNode_t));
     
     /* Sanity check */
-    if (node == NULL || taskListHead == NULL)
+    if (node == NULL)
         {
         return NULL;
         }
@@ -133,24 +80,31 @@ IMPORT Task_t * createTask( void (* taskRoutine),
     /* Assing to new task node */
     node->task = taskCtrl;
     node->next = NULL;
-
-    /* Traverse the list to find the last node */
-    tempNode = taskListHead->next;
-    while (tempNode != NULL)
-        {
-        tempNode = tempNode->next;
-        }
-    tempNode->next = node;
     
-    return taskCtrl;
+    if (taskListHead == NULL)
+        {
+        taskListHead = node;
+        }
+    else
+        {
+        /* Traverse the list to find the last node */
+        tempNode = taskListHead->next;
+        while (tempNode != NULL)
+            {
+            tempNode = tempNode->next;
+            }
+        tempNode->next = node;
+        }
+
+    return taskCtrl;    
     }
 
-LOCAL void fillStackContext (Task_t * taskCtrl)
+LOCAL void fillStackContext (wTask_t * taskCtrl)
     {
     /* taskCtrl already checked on call-tree */
 
     UINT8 *stack = (UINT8 *) taskCtrl->stackPtr;
-    UINT16 addr = (UINT16) taskCtrl->task; /* entry point of task function */
+    UINT16 addr = (UINT16) &taskCtrl->taskFn; /* entry point of task function */
 
     /* Move stack pointer to top (stack grows down) */
     stack += taskCtrl->stackSize;
@@ -171,116 +125,16 @@ LOCAL void fillStackContext (Task_t * taskCtrl)
     taskCtrl->stackPtr = (UINT16 *)stack;
     }
 
-IMPORT STATUS startTask (Task_t * taskCtrl)
-    {
-    if (taskCtrl == NULL)
-        {
-        return ERROR;
-        }
-    
-    taskCtrl->status = RUNNING;
-    
-    return OK;
-    }
-
 /*******************************************************************************
 Tick and Context Saving/Restoring managment
 */
 
 ISR (TIMER1_COMPA_vect)
     {
-
-    /* Save context */
-    // saveContext();
-
-    /* 
-    Increment tick count and check if the new tick value has caused a delay 
-    period to expire 
-    */
-    // incTick();
-    tick++;
-
-    /* 
-    Verify if a context switch is required.
-    Switch to the context of the task made ready to run by incTick()
-    */
-    // switchContext ();
-
-    /*
-    Restore the context. If a context switch has occurend this will restore 
-    the context of the interrupted task.
-    */
-    // restoreContext();
-
-
-    /* Return from ISR */
-    __asm__ __volatile__ ("reti");
+    ++tick;
     }
 
-LOCAL void saveContext ( void )
-    {
-    /*__asm__ __volatile__ (
-        "push r0 "
-        "in r0, SREG"
-        "cli"
-        "push r0"
-        "push r1"
-        "clr r1"
-        "push r2"
-        "push r3"
-        "push r4"
-        "push r5"
-        "push r6"
-        "push r7"
-        "push r8"
-        "push r9"
-        "push r10"
-        "push r11"
-        "push r12"
-        "push r13"
-        "push r14"
-        "push r15"
-        "push r16"
-        "push r17"
-        "push r18"
-        "push r19"
-        "push r20"
-        "push r21"
-        "push r22"
-        "push r23"
-        "push r24"
-        "push r25"
-        "push r26"
-        "push r27"
-        "push r28"
-        "push r29"
-        "push r30"
-        "push r31"
-        "lds r26, currentTaskContext"
-        "lds r27, currentTaskContext + 1"
-        "in r0, SPL"
-        "st x+, r0 "
-        "in r0, SPH"
-        "st x+, r0 "
-        );*/
-    }
-
-LOCAL void incTick (void)
-    {
-    
-    }
-
-LOCAL void switchContext (void)
-    {
-    
-    }
-
-LOCAL void restoreContext (void)
-    {
-    
-    }
-
-/*
+/*******************************************************************************
 Timer Setup for tick counter 
 - 10 ms tick period
 - OCR1A = (Fcpu.tick)/prescaler - 1 
