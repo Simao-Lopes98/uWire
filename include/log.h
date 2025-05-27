@@ -22,7 +22,7 @@ Log macros with colours
 
 
 #define CRITICAL_LOG(x) printf("%s %s %s", ANSI_COLOR_RED, x, ANSI_COLOR_RESET)
-#define LOG(x) printf("%s %s %s", ANSI_COLOR_GREEN, x, ANSI_COLOR_RESET)
+#define LOG(x) printf("%s %s %s\n", ANSI_COLOR_RED, x, ANSI_COLOR_RESET)
 
 
 #endif /* LOG_H */

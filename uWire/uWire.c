@@ -21,13 +21,12 @@ LOCAL void timerSetup (void);
 LOCAL void fillStackContext (wTask_t * taskCtrl);
 
 void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
-LOCAL void wtaskSwitcher ( void );
-
+void wtaskSwitcher ( void );
+LOCAL void idleTask (void);
 /* Globals */
 
-LOCAL wTaskNode_t * taskListHead = NULL; /* Head of Task List */
-LOCAL volatile UINT64 tick = 0;  /* Tick counter */
-volatile wTask_t *wCurrentTask = NULL; /* Save current taks stack */
+volatile UINT64 tick = 0;  /* Tick counter */
+wTask_t * volatile wCurrentTask = NULL; /* Save current taks stack */
 LOCAL UINT8 taskNumber = 0;
 
 // DEBUG
@@ -38,6 +37,11 @@ API Tasks functions
 */
 IMPORT void initScheduler(void)
     {
+    /* Create Idle */
+    wTask_t * idleTaskCtrl = wTaskCreate (&idleTask, "idle", 512);
+    
+    /* Assing current task to idle */
+    wCurrentTask = idleTaskCtrl;
 
     /* Create tick counter */
     timerSetup();
@@ -76,40 +80,12 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
     /* Fill stack context */
     fillStackContext(taskCtrl);
 
-    /* Create a new node and add to the list */
-    node = (wTaskNode_t *) calloc (1, sizeof(wTaskNode_t));
-    
-    /* Sanity check */
-    if (node == NULL)
-        {
-        return NULL;
-        }
-
-    /* Assing to new task node */
-    node->task = taskCtrl;
-    node->next = NULL;
-    
-    if (taskListHead == NULL)
-        {
-        taskListHead = node;
-        }
-    else
-        {
-        /* Traverse the list to find the last node */
-        tempNode = taskListHead->next;
-        while (tempNode != NULL)
-            {
-            tempNode = tempNode->next;
-            }
-        tempNode->next = node;
-        }
-
     // DEBUG
     wTaskList[taskNumber] = taskCtrl;
 
     /* Update task number */
     taskNumber++;
-    return taskCtrl;    
+    return taskCtrl;
     }
 
 LOCAL void fillStackContext (wTask_t * taskCtrl)
@@ -131,25 +107,29 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
 
     /* Push registers R31 to R0 */
     for (int i = 31; i >= 0; i--) {
-        *(--stack) = 0x00;
+        *(--stack) = 0xDE;
     }
 
     /* Update the task's stack pointer */
     taskCtrl->stackPtr = (UINT16 *)stack;
     }
 
+LOCAL void idleTask (void)
+    {
+    printf ("Hello from Idle\n");
+
+    while (1)
+        {
+        _delay_ms (250);
+        }
+    }
 /*******************************************************************************
 Tick and Context Saving/Restoring managment
 */
 void wtaskSwitcher ( void )
     {
-    /* current task index */
-    static UINT8 index = 0;
-
-    // TODO: Add task status checking
-    wCurrentTask = wTaskList [index];
-
-    index = (index == taskNumber) ? index = 0 : index + 1;
+    /* Will need to be updated for scalability */
+    wCurrentTask = (wCurrentTask == wTaskList[0]) ? wTaskList[1]:wTaskList[0];
     }
 
 void TIMER1_COMPA_vect (void)
@@ -159,7 +139,7 @@ void TIMER1_COMPA_vect (void)
     __asm__ __volatile__ (        
         /* --- Save Context --- */
         "push r0               \n\t"              
-        "in   r0, _SREG_       \n\t"
+        "in   r0, __SREG__       \n\t"
         "cli                   \n\t" /* disable interrupts during switch */
         "push r0               \n\t"
         "push r1               \n\t"
@@ -176,9 +156,9 @@ void TIMER1_COMPA_vect (void)
         /* Save stack pointer to wCurrentTask->stackPtr */
         "lds  r26, wCurrentTask     \n\t"
         "lds  r27, wCurrentTask+1   \n\t"
-        "in   r0, _SP_L_            \n\t"
+        "in   r0, __SP_L__            \n\t"
         "st   x+, r0                \n\t"
-        "in   r0, _SP_H_            \n\t"
+        "in   r0, __SP_H__           \n\t"
         "st   x+, r0                \n\t"
 
         /* Call scheduler */
@@ -188,9 +168,9 @@ void TIMER1_COMPA_vect (void)
         "lds  r26, wCurrentTask     \n\t"
         "lds  r27, wCurrentTask+1   \n\t"
         "ld   r28, x+               \n\t"  // _SP_L_
-        "out  _SP_L_, r28           \n\t"
+        "out  __SP_L__, r28           \n\t"
         "ld   r29, x+               \n\t"  // _SP_H_
-        "out  _SP_H_, r29           \n\t"
+        "out  __SP_H__, r29           \n\t"
 
         /* Restore Context */
         "pop r31\n\t pop r30\n\t pop r29\n\t pop r28\n\t"
@@ -202,7 +182,7 @@ void TIMER1_COMPA_vect (void)
         "pop r7 \n\t pop r6 \n\t pop r5 \n\t pop r4 \n\t"
         "pop r3 \n\t pop r2 \n\t pop r1 \n\t"
         "pop r0                     \n\t"
-        "out _SREG_, r0             \n\t"
+        "out __SREG__, r0             \n\t"
         "pop r0                     \n\t"
         "reti                       \n\t"
         );
