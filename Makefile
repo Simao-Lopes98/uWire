@@ -32,6 +32,7 @@ SERIAL_SRC = $(SERIAL_DIR)/serial.c
 OBJ = $(BUILD_DIR)/main.o
 UWIRE_OBJ = $(BUILD_DIR)/uWire.o
 SERIAL_OBJ = $(BUILD_DIR)/serial.o
+PRJ_DUMP = $(BUILD_DIR)/prj.lst
 
 ELF = $(BUILD_DIR)/prj.elf
 HEX = $(FLASH_DIR)/prj.hex
@@ -66,7 +67,7 @@ clean:
 	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(FLASH_DIR)/*.hex
 
 dump:
-	avr-objdump -S -m avr build/main.elf > build/main.lst
+	avr-objdump -S -m avr $(ELF) > $(PRJ_DUMP)
 
 
 # Phony targets

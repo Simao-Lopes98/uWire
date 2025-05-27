@@ -3,6 +3,7 @@
 /build/main.o
 /build/uWire.o
 /build/serial.o
+/build/prj.lst
 
 # Ignore flash contents
 /flash/prj.hex
