@@ -93,7 +93,7 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
     /* taskCtrl already checked on call-tree */
 
     UINT8 *stack = (UINT8 *) taskCtrl->stackPtr;
-    UINT16 addr = (UINT16) &taskCtrl->taskFn; /* entry point of task function */
+    UINT16 addr = (UINT16) taskCtrl->taskFn; /* entry point of task function */
 
     /* Move stack pointer to top (stack grows down) */
     stack += taskCtrl->stackSize;
@@ -139,7 +139,7 @@ void TIMER1_COMPA_vect (void)
     __asm__ __volatile__ (        
         /* --- Save Context --- */
         "push r0               \n\t"              
-        "in   r0, __SREG__       \n\t"
+        "in   r0, __SREG__     \n\t"
         "cli                   \n\t" /* disable interrupts during switch */
         "push r0               \n\t"
         "push r1               \n\t"
@@ -156,9 +156,9 @@ void TIMER1_COMPA_vect (void)
         /* Save stack pointer to wCurrentTask->stackPtr */
         "lds  r26, wCurrentTask     \n\t"
         "lds  r27, wCurrentTask+1   \n\t"
-        "in   r0, __SP_L__            \n\t"
+        "in   r0, __SP_L__          \n\t"
         "st   x+, r0                \n\t"
-        "in   r0, __SP_H__           \n\t"
+        "in   r0, __SP_H__          \n\t"
         "st   x+, r0                \n\t"
 
         /* Call scheduler */
@@ -168,9 +168,9 @@ void TIMER1_COMPA_vect (void)
         "lds  r26, wCurrentTask     \n\t"
         "lds  r27, wCurrentTask+1   \n\t"
         "ld   r28, x+               \n\t"  // _SP_L_
-        "out  __SP_L__, r28           \n\t"
+        "out  __SP_L__, r28         \n\t"
         "ld   r29, x+               \n\t"  // _SP_H_
-        "out  __SP_H__, r29           \n\t"
+        "out  __SP_H__, r29         \n\t"
 
         /* Restore Context */
         "pop r31\n\t pop r30\n\t pop r29\n\t pop r28\n\t"
@@ -182,7 +182,7 @@ void TIMER1_COMPA_vect (void)
         "pop r7 \n\t pop r6 \n\t pop r5 \n\t pop r4 \n\t"
         "pop r3 \n\t pop r2 \n\t pop r1 \n\t"
         "pop r0                     \n\t"
-        "out __SREG__, r0             \n\t"
+        "out __SREG__, r0           \n\t"
         "pop r0                     \n\t"
         "reti                       \n\t"
         );
