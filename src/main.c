@@ -17,7 +17,7 @@ Program starting point
 // Forward declarations
 int main (void);
 void blinkTask (void);
-void hexDumpStack(wTask_t *task, UINT16 stackSize);
+void hexDumpStack(wTask_t *task);
 
 // Main - Entry point
 int main (void)
@@ -28,12 +28,14 @@ int main (void)
     // Init Serial
     serial_init(9600);
 
-    wTask_t * blinkTask = wTaskCreate (&blinkTask, "blink", 512);
+    wTask_t * blinkCtrlBlock = wTaskCreate (&blinkTask, "blink", 256);
 
-    hexDumpStack(blinkTask, 512);
+    hexDumpStack(blinkCtrlBlock);
 
     /* Init uWire */
-    // initScheduler();
+    initScheduler();
+    
+    printf ("Enterying main while\n");
 
     while (1)
         {
@@ -43,22 +45,22 @@ int main (void)
     return 0;
     }
 
-void hexDumpStack(wTask_t *task, UINT16 stackSize)
+void hexDumpStack(wTask_t *task)
     {
         UINT8 *sp = (UINT8 *)task->stackPtr;
-        printf("\n\n\n");
+        printf("\n\n");
         printf("Stack dump from fabricated SP:\n");
-        for (uint16_t i = 0; i < stackSize; i += 16)
+        for (uint16_t i = 0; i < task->stackSize; i += 16)
         {
             printf("0x%04X: ", (unsigned)(sp + i));
-            for (UINT8 j = 0; j < 16 && (i + j) < stackSize; ++j)
+            for (UINT8 j = 0; j < 16 && (i + j) < task->stackSize; ++j)
             {
                 printf("%02X ", sp[i + j]);
             }
             printf("\n");
         }
         UINT16 taskAddr = (UINT16) task->taskFn;
-        printf ("Low Byte: %02X. High Byte: %02X", 
+        printf ("Low Byte: %02X. High Byte: %02X\n", 
                 (UINT8)(taskAddr & 0xFF), 
                 (UINT8)((taskAddr >> 8) & 0xFF));
     }
@@ -66,6 +68,7 @@ void hexDumpStack(wTask_t *task, UINT16 stackSize)
 void blinkTask (void)
     {
     printf ("Starting Task 2\n");
+
     while (1)
         {
         PORTB |= (1 << 5);

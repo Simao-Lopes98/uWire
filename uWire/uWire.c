@@ -23,14 +23,15 @@ LOCAL void fillStackContext (wTask_t * taskCtrl);
 void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
 void wtaskSwitcher ( void );
 LOCAL void idleTask (void);
+
 /* Globals */
 
 volatile UINT64 tick = 0;  /* Tick counter */
 wTask_t * volatile wCurrentTask = NULL; /* Save current taks stack */
+wTask_t * volatile wNextTask = NULL;    /* Next current taks stack */
 LOCAL UINT8 taskNumber = 0;
 
-// DEBUG
-LOCAL wTask_t * wTaskList[2];
+wTask_t * volatile wTaskList[2];
 
 /*******************************************************************************
 API Tasks functions
@@ -52,9 +53,7 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             UINT16 stackSize)
     {
     wTask_t * taskCtrl = NULL;
-    wTaskNode_t * node = NULL;
-    wTaskNode_t * tempNode = NULL;
-    
+
     /* Sanity checks */
     if (taskFn == NULL || name == NULL)
         {
@@ -98,17 +97,24 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
     /* Move stack pointer to top (stack grows down) */
     stack += taskCtrl->stackSize;
 
-    /* Push return address */
+    //    This is the SREG that `reti` will pop last.
+    *(--stack) = 0x80; // SREG with I-bit (interrupts enabled)
+
+    /* Push return address (PC) */
     *(--stack) = (UINT8)(addr & 0xFF);        /* low byte */
     *(--stack) = (UINT8)((addr >> 8) & 0xFF); /* high byte */
+
+    // R0 (The original R0 that the ISR would have saved)
+    *(--stack) = 0xDE; // Or any initial value for R0
 
     /* Push initial SREG with interrupts enabled (I-bit set) */
     *(--stack) = 0x80;
 
     /* Push registers R31 to R0 */
-    for (int i = 31; i >= 0; i--) {
+    for (int i = 31; i >= 0; i--) 
+        {
         *(--stack) = 0xDE;
-    }
+        }
 
     /* Update the task's stack pointer */
     taskCtrl->stackPtr = (UINT16 *)stack;
@@ -123,18 +129,19 @@ LOCAL void idleTask (void)
         _delay_ms (250);
         }
     }
+
 /*******************************************************************************
 Tick and Context Saving/Restoring managment
 */
 void wtaskSwitcher ( void )
     {
     /* Will need to be updated for scalability */
-    wCurrentTask = (wCurrentTask == wTaskList[0]) ? wTaskList[1]:wTaskList[0];
+    wCurrentTask = (wCurrentTask == wTaskList[0]) ? wTaskList[1] : wTaskList[0];
     }
 
 void TIMER1_COMPA_vect (void)
     {
-    ++tick;
+    // tick++;
 
     __asm__ __volatile__ (        
         /* --- Save Context --- */
@@ -160,10 +167,11 @@ void TIMER1_COMPA_vect (void)
         "st   x+, r0                \n\t"
         "in   r0, __SP_H__          \n\t"
         "st   x+, r0                \n\t"
+    );
 
-        /* Call scheduler */
-        "rcall wtaskSwitcher        \n\t"
+    wtaskSwitcher();
 
+    __asm__ __volatile__ (
         /* Restore SP from wCurrentTask->stackPtr */
         "lds  r26, wCurrentTask     \n\t"
         "lds  r27, wCurrentTask+1   \n\t"
@@ -184,7 +192,7 @@ void TIMER1_COMPA_vect (void)
         "pop r0                     \n\t"
         "out __SREG__, r0           \n\t"
         "pop r0                     \n\t"
-        "reti                       \n\t"
+        "reti                       \n\t"               /* Exit ISR */
         );
     }
 

@@ -15,7 +15,6 @@
 
 /* typedefs */
 
-
 /* Function pointer */
 typedef void (* wTaskHandler) ();
 
