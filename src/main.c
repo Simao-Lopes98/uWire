@@ -18,6 +18,7 @@ Program starting point
 int main (void);
 void blinkTask (void);
 void hexDumpStack(wTask_t *task);
+void idleTask (void);
 
 // Main - Entry point
 int main (void)
@@ -28,18 +29,19 @@ int main (void)
     // Init Serial
     serial_init(9600);
 
+    wTask_t * idleTaskCtrl = wTaskCreate (&idleTask, "idle", 256);
     wTask_t * blinkCtrlBlock = wTaskCreate (&blinkTask, "blink", 256);
-
-    hexDumpStack(blinkCtrlBlock);
+    
+    // hexDumpStack(blinkCtrlBlock);
 
     /* Init uWire */
     initScheduler();
-    
-    printf ("Enterying main while\n");
 
+    /* Main loop is used as Idle Task */
     while (1)
         {
-        _delay_ms (250);
+        printf ("In Main\n");
+        _delay_ms (1000);
         }
     
     return 0;
@@ -67,13 +69,21 @@ void hexDumpStack(wTask_t *task)
 
 void blinkTask (void)
     {
-    printf ("Starting Task 2\n");
 
     while (1)
         {
         PORTB |= (1 << 5);
-        _delay_ms (500);
+        _delay_ms (50);
         PORTB &= ~(1 << 5);
+        _delay_ms (50);
+        }
+    }
+
+void idleTask (void)
+    {
+    while (1)
+        {
+        printf ("Hello from Idle\n");
         _delay_ms (500);
         }
     }

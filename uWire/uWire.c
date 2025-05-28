@@ -22,7 +22,6 @@ LOCAL void fillStackContext (wTask_t * taskCtrl);
 
 void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
 void wtaskSwitcher ( void );
-LOCAL void idleTask (void);
 
 /* Globals */
 
@@ -38,11 +37,16 @@ API Tasks functions
 */
 IMPORT void initScheduler(void)
     {
-    /* Create Idle */
-    wTask_t * idleTaskCtrl = wTaskCreate (&idleTask, "idle", 512);
     
-    /* Assing current task to idle */
-    wCurrentTask = idleTaskCtrl;
+    /* Check if at least one task is created */
+    if (wTaskList[0] == NULL)
+        {
+        CRITICAL_LOG ("ERROR: No task created");
+        return;
+        }
+
+    /* Set initial task to run */
+    wCurrentTask = wTaskList[0];
 
     /* Create tick counter */
     timerSetup();
@@ -97,15 +101,15 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
     /* Move stack pointer to top (stack grows down) */
     stack += taskCtrl->stackSize;
 
-    //    This is the SREG that `reti` will pop last.
+    /* This is the SREG that `reti` will pop last */
     *(--stack) = 0x80; // SREG with I-bit (interrupts enabled)
 
     /* Push return address (PC) */
     *(--stack) = (UINT8)(addr & 0xFF);        /* low byte */
     *(--stack) = (UINT8)((addr >> 8) & 0xFF); /* high byte */
 
-    // R0 (The original R0 that the ISR would have saved)
-    *(--stack) = 0xDE; // Or any initial value for R0
+    /* R0 (The original R0 that the ISR would have saved) */
+    *(--stack) = 0xDE;
 
     /* Push initial SREG with interrupts enabled (I-bit set) */
     *(--stack) = 0x80;
@@ -120,16 +124,6 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
     taskCtrl->stackPtr = (UINT16 *)stack;
     }
 
-LOCAL void idleTask (void)
-    {
-    printf ("Hello from Idle\n");
-
-    while (1)
-        {
-        _delay_ms (250);
-        }
-    }
-
 /*******************************************************************************
 Tick and Context Saving/Restoring managment
 */
@@ -141,6 +135,10 @@ void wtaskSwitcher ( void )
 
 void TIMER1_COMPA_vect (void)
     {
+    /* 
+    TODO: Tick has be updated outside, as the aditionall registers will 
+    conflict the stack
+    */
     // tick++;
 
     __asm__ __volatile__ (        
@@ -167,11 +165,10 @@ void TIMER1_COMPA_vect (void)
         "st   x+, r0                \n\t"
         "in   r0, __SP_H__          \n\t"
         "st   x+, r0                \n\t"
-    );
 
-    wtaskSwitcher();
+        /* Call task switcher */
+        "rcall wtaskSwitcher        \n\t"
 
-    __asm__ __volatile__ (
         /* Restore SP from wCurrentTask->stackPtr */
         "lds  r26, wCurrentTask     \n\t"
         "lds  r27, wCurrentTask+1   \n\t"
