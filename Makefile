@@ -27,11 +27,12 @@ BAUD = 115200
 
 # File names
 SRC = $(SRC_DIR)/main.c 
-TASK_SRC = $(UWIRE_DIR)/tasks.c
+UWIRE_SRC = $(UWIRE_DIR)/uWire.c
 SERIAL_SRC = $(SERIAL_DIR)/serial.c
 OBJ = $(BUILD_DIR)/main.o
-TASK_OBJ = $(BUILD_DIR)/tasks.o
+UWIRE_OBJ = $(BUILD_DIR)/uWire.o
 SERIAL_OBJ = $(BUILD_DIR)/serial.o
+PRJ_DUMP = $(BUILD_DIR)/prj.lst
 
 ELF = $(BUILD_DIR)/prj.elf
 HEX = $(FLASH_DIR)/prj.hex
@@ -43,14 +44,14 @@ all: $(HEX)
 $(OBJ): $(SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(TASK_OBJ): $(TASK_SRC)
+$(UWIRE_OBJ): $(UWIRE_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(SERIAL_OBJ): $(SERIAL_SRC)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Link .o to .elf
-$(ELF): $(OBJ) $(TASK_OBJ) $(SERIAL_OBJ)
+$(ELF): $(OBJ) $(UWIRE_OBJ) $(SERIAL_OBJ)
 	$(CC) -mmcu=$(MCU) $^ -o $@
 
 # Convert .elf to .hex
@@ -66,7 +67,7 @@ clean:
 	rm -f $(BUILD_DIR)/*.o $(BUILD_DIR)/*.elf $(FLASH_DIR)/*.hex
 
 dump:
-	avr-objdump -S -m avr build/main.elf > build/main.lst
+	avr-objdump -S -m avr $(ELF) > $(PRJ_DUMP)
 
 
 # Phony targets

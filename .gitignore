@@ -1,8 +1,9 @@
 # Ignore build artifacts
 /build/prj.elf
 /build/main.o
-/build/tasks.o
+/build/uWire.o
 /build/serial.o
+/build/prj.lst
 
 # Ignore flash contents
 /flash/prj.hex

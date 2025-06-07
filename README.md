@@ -10,9 +10,16 @@ Create a bare-metal task scheduler where each task runs cooperatively—meaning 
 * Track delays or states using software timers or flags. ✔
 
 ## Phase 2 Goals
-* Implement Context Switching
-* Save and restore CPU state (registers + stack pointer) between tasks.
-* Tasks no longer return to the scheduler; instead, they're interrupted and resumed later.
+* Implement Context Switching ✔
+* Save and restore CPU state (registers + stack pointer) between tasks. ✔
+* Tasks no longer return to the scheduler; instead, they're interrupted and resumed later. ✔
+
+## Phase 3 Goals
+* Code hardening API functions
+* Implement a task list using a SLL, instead of an array of TCB
+* Update tick management
+* Create task status
+* Create a task delay based on ticks
 
 # Make Commands
 
@@ -25,6 +32,12 @@ To flash
 ```` Bash
 make flash
 ````
+
+Dump elf. file
+```` Bash
+make dump
+````
+
 To clean .o, .elf, .hex files
 ```` Bash
 make clean

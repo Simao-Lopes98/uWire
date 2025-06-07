@@ -11,57 +11,66 @@ Program starting point
 #include <util/delay.h>
 #include <avr/interrupt.h>
 #include <common.h>
-#include <tasks.h>
+#include <uWire.h>
 #include <serial.h>
 
 // Forward declarations
 int main (void);
-void ledBlink (void);
-
-// Globals
-LOCAL Task_t * ledBlinkTask = NULL;
+LOCAL void blinky1Task (void);
+LOCAL void blinky2Task (void);
 
 // Main - Entry point
 int main (void)
     {
+    
     // Init LED in IO 13
     DDRB |= (1 << 5);
+    // Init LED in IO 12
+    DDRB |= (1 << 4);
 
     // Init Serial
     serial_init(9600);
 
-    /* Create Task */
-    ledBlinkTask = createTask ("ledBlink", ledBlink, NULL);
-
-    (void) startTask (ledBlinkTask);
-
     /* Init uWire */
     initScheduler();
+
+    /* Create tasks */
+    wTask_t * blinky2TaskCtrl = wTaskCreate (&blinky2Task, 
+                                            "blinky2", 
+                                            MINIMAL_STACK_SIZE);
+    wTask_t * blinkCtrlBlock = wTaskCreate (&blinky1Task, 
+                                            "blink1", 
+                                            MINIMAL_STACK_SIZE);
+
+    /* Main loop is used as Idle Task */
+    while (1)
+        {
+        printf ("In Main\n");
+        _delay_ms (1000);
+        }
     
     return 0;
     }
-/*
-Test with a simple state-machine.
-TODO: Task Stack Management 
 
-*/
-void ledBlink (void)
+void blinky1Task (void)
     {
-    printf("Entering task\n");
-    static int state = 0;
-    switch (state)
+
+    while (1)
         {
-        case 0:
-            PORTB |= (1 << 5);
-            taskDelay(500 / TICK_MS);
-            state = 1;
-            return;
-        case 1:
-            PORTB &= ~(1 << 5);
-            taskDelay(500 / TICK_MS);
-            state = 0;
-            return;
-        default:
-            return;
-        }    
+        PORTB |= (1 << 5);
+        _delay_ms (50);
+        PORTB &= ~(1 << 5);
+        _delay_ms (50);
+        }
+    }
+
+void blinky2Task (void)
+    {
+    while (1)
+        {
+        PORTB |= (1 << 4);
+        _delay_ms (500);
+        PORTB &= ~(1 << 4);
+        _delay_ms (500);
+        }
     }
