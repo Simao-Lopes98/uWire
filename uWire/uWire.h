@@ -18,6 +18,7 @@
 /* Function pointer */
 typedef void (* wTaskHandler) ();
 
+/* Task Control Block */
 typedef struct task
     {
     void * stackPtr;                /* HAS TO BE 1st! Task Stack pointer */
@@ -38,5 +39,5 @@ IMPORT void initScheduler(void);
 IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             const char name[12],
                             UINT16 stackSize);
-
+IMPORT void hexDumpStack(wTask_t *task);
 #endif /* UWIRE_H */

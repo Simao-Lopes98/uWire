@@ -25,29 +25,40 @@ void wtaskSwitcher ( void );
 
 /* Globals */
 
-volatile UINT64 tick = 0;  /* Tick counter */
+volatile UINT64 tick = 0;               /* Tick counter */
 wTask_t * volatile wCurrentTask = NULL; /* Save current taks stack */
 wTask_t * volatile wNextTask = NULL;    /* Next current taks stack */
-LOCAL UINT8 taskNumber = 0;
+LOCAL UINT8 taskNumber = 0;             /* Number of tasks keeper */
 
-wTask_t * volatile wTaskList[2];
+wTask_t * volatile wTaskList[3];        /* List of tasks TCB */
 
 /*******************************************************************************
 API Tasks functions
 */
 IMPORT void initScheduler(void)
     {
+    wTask_t * taskCtrl = NULL;
     
-    /* Check if at least one task is created */
-    if (wTaskList[0] == NULL)
+    /* Create TCB for main */
+    taskCtrl = (wTask_t *) calloc (1, sizeof (wTask_t));
+    if ( taskCtrl == NULL)
         {
-        CRITICAL_LOG ("ERROR: No task created");
+        CRITICAL_LOG("Fail on wTaskCreate - Fail to allocate heap for TCB");
         return;
         }
+    
+    (void) strcpy (taskCtrl->name, "main");
+    /* No need to setup the function ptr */
+    taskCtrl->stackSize = MINIMAL_STACK_SIZE;
+    taskCtrl->stackPtr = (void *) malloc (MINIMAL_STACK_SIZE);
+    (void) memset (taskCtrl->stackPtr, 0, MINIMAL_STACK_SIZE);
 
-    /* Set initial task to run */
-    wCurrentTask = wTaskList[0];
+    /* Set the current 1st current task to main */
+    wCurrentTask = taskCtrl;
 
+    wTaskList[0] = taskCtrl;
+    taskNumber++;
+    
     /* Create tick counter */
     timerSetup();
     }
@@ -57,6 +68,9 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             UINT16 stackSize)
     {
     wTask_t * taskCtrl = NULL;
+    
+    /* Disable ISR */
+    cli();
 
     /* Sanity checks */
     if (taskFn == NULL || name == NULL)
@@ -88,9 +102,38 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
 
     /* Update task number */
     taskNumber++;
+    
+    /* Enable ISR */
+    sei();
+
     return taskCtrl;
     }
 
+IMPORT void hexDumpStack(wTask_t *task)
+    {
+    UINT8 *sp = (UINT8 *)task->stackPtr;
+    printf("\n\n");
+    printf("Stack dump from fabricated SP:\n");
+    for (uint16_t i = 0; i < task->stackSize; i += 16)
+    {
+        printf("0x%04X: ", (unsigned)(sp + i));
+        for (UINT8 j = 0; j < 16 && (i + j) < task->stackSize; ++j)
+        {
+            printf("%02X ", sp[i + j]);
+        }
+        printf("\n");
+    }
+    UINT16 taskAddr = (UINT16) task->taskFn;
+    printf ("Low Byte: %02X. High Byte: %02X\n", 
+            (UINT8)(taskAddr & 0xFF), 
+            (UINT8)((taskAddr >> 8) & 0xFF));
+    }
+
+/*******************************************************************************
+Private Tasks functions
+*/
+
+/* Context filling routine */
 LOCAL void fillStackContext (wTask_t * taskCtrl)
     {
     /* taskCtrl already checked on call-tree */
@@ -127,10 +170,18 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
 /*******************************************************************************
 Tick and Context Saving/Restoring managment
 */
+
 void wtaskSwitcher ( void )
     {
-    /* Will need to be updated for scalability */
-    wCurrentTask = (wCurrentTask == wTaskList[0]) ? wTaskList[1] : wTaskList[0];
+    static int taskIndex = 1;
+    
+    wCurrentTask = wTaskList[taskIndex];
+    taskIndex++;
+    if (taskIndex == 3)
+        {
+        taskIndex = 0;
+        }
+    
     }
 
 void TIMER1_COMPA_vect (void)

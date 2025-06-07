@@ -16,26 +16,31 @@ Program starting point
 
 // Forward declarations
 int main (void);
-void blinkTask (void);
-void hexDumpStack(wTask_t *task);
-void idleTask (void);
+LOCAL void blinky1Task (void);
+LOCAL void blinky2Task (void);
 
 // Main - Entry point
 int main (void)
     {
+    
     // Init LED in IO 13
     DDRB |= (1 << 5);
+    // Init LED in IO 12
+    DDRB |= (1 << 4);
 
     // Init Serial
     serial_init(9600);
 
-    wTask_t * idleTaskCtrl = wTaskCreate (&idleTask, "idle", 256);
-    wTask_t * blinkCtrlBlock = wTaskCreate (&blinkTask, "blink", 256);
-    
-    // hexDumpStack(blinkCtrlBlock);
-
     /* Init uWire */
     initScheduler();
+
+    /* Create tasks */
+    wTask_t * blinky2TaskCtrl = wTaskCreate (&blinky2Task, 
+                                            "blinky2", 
+                                            MINIMAL_STACK_SIZE);
+    wTask_t * blinkCtrlBlock = wTaskCreate (&blinky1Task, 
+                                            "blink1", 
+                                            MINIMAL_STACK_SIZE);
 
     /* Main loop is used as Idle Task */
     while (1)
@@ -47,27 +52,7 @@ int main (void)
     return 0;
     }
 
-void hexDumpStack(wTask_t *task)
-    {
-        UINT8 *sp = (UINT8 *)task->stackPtr;
-        printf("\n\n");
-        printf("Stack dump from fabricated SP:\n");
-        for (uint16_t i = 0; i < task->stackSize; i += 16)
-        {
-            printf("0x%04X: ", (unsigned)(sp + i));
-            for (UINT8 j = 0; j < 16 && (i + j) < task->stackSize; ++j)
-            {
-                printf("%02X ", sp[i + j]);
-            }
-            printf("\n");
-        }
-        UINT16 taskAddr = (UINT16) task->taskFn;
-        printf ("Low Byte: %02X. High Byte: %02X\n", 
-                (UINT8)(taskAddr & 0xFF), 
-                (UINT8)((taskAddr >> 8) & 0xFF));
-    }
-
-void blinkTask (void)
+void blinky1Task (void)
     {
 
     while (1)
@@ -79,11 +64,13 @@ void blinkTask (void)
         }
     }
 
-void idleTask (void)
+void blinky2Task (void)
     {
     while (1)
         {
-        printf ("Hello from Idle\n");
+        PORTB |= (1 << 4);
+        _delay_ms (500);
+        PORTB &= ~(1 << 4);
         _delay_ms (500);
         }
     }
