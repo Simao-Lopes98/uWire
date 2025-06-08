@@ -54,7 +54,7 @@ int main (void)
 
 void blinky1Task (void)
     {
-
+    printf ("Entering Bliny 1\n");
     while (1)
         {
         PORTB |= (1 << 5);
@@ -66,6 +66,7 @@ void blinky1Task (void)
 
 void blinky2Task (void)
     {
+    printf ("Entering Bliny 2\n");
     while (1)
         {
         PORTB |= (1 << 4);

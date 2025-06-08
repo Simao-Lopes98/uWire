@@ -193,7 +193,7 @@ LOCAL wTask_t * createMainTask (void)
     return taskCtrl;
     }
 
-/* Insert a task on the list */
+/* Insert a task node at the end of the list */
 LOCAL STATUS insertTaskNode (wTask_t * taskCtrl)
     {
     wTaskNode_t * taskNode = NULL;
@@ -217,12 +217,13 @@ LOCAL STATUS insertTaskNode (wTask_t * taskCtrl)
         return OK;
         }
 
+    /* Inserts in the end of the SLL */
     currentNode = taskHeadNode;
-    while (currentNode != NULL)
+    while (currentNode->next != NULL)
         {
         currentNode = currentNode->next;
         }
-    
+
     currentNode->next = taskNode;
     return OK;
     }
@@ -233,7 +234,12 @@ LOCAL STATUS insertTaskNode (wTask_t * taskCtrl)
 
 void wtaskSwitcher ( void )
     {    
+    /* Point to the head node as the main task is the 1st to run */
     static wTaskNode_t * currentNode = NULL;
+    if (NULL == currentNode)
+        {
+        currentNode = taskHeadNode;
+        }
 
     currentNode = currentNode->next != NULL ? currentNode->next : taskHeadNode;
     
