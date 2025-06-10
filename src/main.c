@@ -16,7 +16,8 @@ Program starting point
 
 // Forward declarations
 int main (void);
-LOCAL void blinky1Task (void);
+LOCAL void bspInit(void);       /* Init BSP */
+LOCAL void blinky1Task (void);  
 LOCAL void blinky2Task (void);
 LOCAL void blinky3Task (void);
 
@@ -24,12 +25,7 @@ LOCAL void blinky3Task (void);
 int main (void)
     {
     
-    // Init LED in IO 13
-    DDRB |= (1 << 5);
-    // Init LED in IO 12
-    DDRB |= (1 << 4);
-    // Init LED in IO 11
-    DDRB |= (1 << 3);
+    bspInit();
 
     // Init Serial
     serial_init(9600);
@@ -91,4 +87,14 @@ LOCAL void blinky3Task (void)
         PORTB &= ~(1 << 3);
         _delay_ms (250);
         }
+    }
+
+LOCAL void bspInit(void)
+    {
+    // Init LED in IO 13
+    DDRB |= (1 << 5);
+    // Init LED in IO 12
+    DDRB |= (1 << 4);
+    // Init LED in IO 11
+    DDRB |= (1 << 3);    
     }
