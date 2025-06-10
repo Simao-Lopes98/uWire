@@ -19,6 +19,8 @@ Task management lib.
 /* Forward section */
 LOCAL void timerSetup (void);
 LOCAL void fillStackContext (wTask_t * taskCtrl);
+LOCAL wTask_t * createMainTask (void);
+LOCAL STATUS insertTaskNode (wTask_t * taskCtrl);
 
 void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
 void wtaskSwitcher ( void );
@@ -27,39 +29,33 @@ void wtaskSwitcher ( void );
 
 volatile UINT64 tick = 0;               /* Tick counter */
 wTask_t * volatile wCurrentTask = NULL; /* Save current taks stack */
-wTask_t * volatile wNextTask = NULL;    /* Next current taks stack */
-LOCAL UINT8 taskNumber = 0;             /* Number of tasks keeper */
-
-wTask_t * volatile wTaskList[3];        /* List of tasks TCB */
+wTaskNode_t * volatile taskHeadNode = NULL;/* List of tasks TCB */
 
 /*******************************************************************************
-API Tasks functions
+* API Tasks functions
 */
+
 IMPORT void initScheduler(void)
     {
-    wTask_t * taskCtrl = NULL;
-    
-    /* Create TCB for main */
-    taskCtrl = (wTask_t *) calloc (1, sizeof (wTask_t));
-    if ( taskCtrl == NULL)
+    wTask_t * mainTaskCtrl = NULL;
+
+    mainTaskCtrl = createMainTask();
+    if (mainTaskCtrl == NULL)
         {
-        CRITICAL_LOG("Fail on wTaskCreate - Fail to allocate heap for TCB");
+        CRITICAL_LOG ("Fail creating task for main");
         return;
         }
-    
-    (void) strcpy (taskCtrl->name, "main");
-    /* No need to setup the function ptr */
-    taskCtrl->stackSize = MINIMAL_STACK_SIZE;
-    taskCtrl->stackPtr = (void *) malloc (MINIMAL_STACK_SIZE);
-    (void) memset (taskCtrl->stackPtr, 0, MINIMAL_STACK_SIZE);
+
+    if (insertTaskNode (mainTaskCtrl) != OK)
+        {
+        CRITICAL_LOG ("Fail creating task list");
+        return;        
+        }
 
     /* Set the current 1st current task to main */
-    wCurrentTask = taskCtrl;
+    wCurrentTask = mainTaskCtrl;
 
-    wTaskList[0] = taskCtrl;
-    taskNumber++;
-    
-    /* Create tick counter */
+    /* Setup tick ISR */
     timerSetup();
     }
 
@@ -92,17 +88,26 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
     taskCtrl->stackSize = stackSize;
 
     taskCtrl->stackPtr = (void *) malloc (stackSize);
+    if (taskCtrl->stackPtr == NULL)
+        {
+        CRITICAL_LOG("Fail on wTaskCreate - Fail to "
+                    "allocate heap for task stack");
+        free (taskCtrl);
+        return NULL;        
+        }
     (void) memset (taskCtrl->stackPtr, 0, stackSize);
 
     /* Fill stack context */
     fillStackContext(taskCtrl);
 
-    // DEBUG
-    wTaskList[taskNumber] = taskCtrl;
+    if (insertTaskNode (taskCtrl) != OK)
+        {
+        CRITICAL_LOG("Fail on wTaskCreate - Fail to add task to the list");
+        free (taskCtrl->stackPtr);
+        free (taskCtrl);
+        return NULL;
+        }
 
-    /* Update task number */
-    taskNumber++;
-    
     /* Enable ISR */
     sei();
 
@@ -130,7 +135,7 @@ IMPORT void hexDumpStack(wTask_t *task)
     }
 
 /*******************************************************************************
-Private Tasks functions
+* Private Tasks functions
 */
 
 /* Context filling routine */
@@ -167,21 +172,78 @@ LOCAL void fillStackContext (wTask_t * taskCtrl)
     taskCtrl->stackPtr = (UINT16 *)stack;
     }
 
+/* Task for Main setup */
+LOCAL wTask_t * createMainTask (void)
+    {
+    wTask_t * taskCtrl = NULL;
+
+    /* Create TCB for main */
+    taskCtrl = (wTask_t *) calloc (1, sizeof (wTask_t));
+    if ( taskCtrl == NULL)
+        {
+        return NULL;
+        }
+    
+    (void) strcpy (taskCtrl->name, "main");
+    /* No need to setup the function ptr */
+    taskCtrl->stackSize = MINIMAL_STACK_SIZE;
+    taskCtrl->stackPtr = (void *) malloc (MINIMAL_STACK_SIZE);
+    (void) memset (taskCtrl->stackPtr, 0, MINIMAL_STACK_SIZE);
+    
+    return taskCtrl;
+    }
+
+/* Insert a task node at the end of the list */
+LOCAL STATUS insertTaskNode (wTask_t * taskCtrl)
+    {
+    wTaskNode_t * taskNode = NULL;
+    wTaskNode_t * currentNode = NULL;
+
+    taskNode = (wTaskNode_t *) calloc (1, sizeof(wTaskNode_t));
+    if (taskNode == NULL)
+        {
+        return ERROR;
+        }
+    
+    /* taskCtrl was verified in the call-tree */
+    taskNode->task = taskCtrl;
+    taskNode->next = NULL;
+
+     
+    if (taskHeadNode == NULL)
+        {
+        /* First node in the list */
+        taskHeadNode = taskNode;
+        return OK;
+        }
+
+    /* Inserts in the end of the SLL */
+    currentNode = taskHeadNode;
+    while (currentNode->next != NULL)
+        {
+        currentNode = currentNode->next;
+        }
+
+    currentNode->next = taskNode;
+    return OK;
+    }
+
 /*******************************************************************************
-Tick and Context Saving/Restoring managment
+* Tick and Context Saving/Restoring managment
 */
 
 void wtaskSwitcher ( void )
-    {
-    static int taskIndex = 1;
-    
-    wCurrentTask = wTaskList[taskIndex];
-    taskIndex++;
-    if (taskIndex == 3)
+    {    
+    /* Point to the head node as the main task is the 1st to run */
+    static wTaskNode_t * currentNode = NULL;
+    if (NULL == currentNode)
         {
-        taskIndex = 0;
+        currentNode = taskHeadNode;
         }
+
+    currentNode = currentNode->next != NULL ? currentNode->next : taskHeadNode;
     
+    wCurrentTask = currentNode->task;
     }
 
 void TIMER1_COMPA_vect (void)
@@ -263,7 +325,7 @@ LOCAL void timerSetup (void)
     /* Set Prescaler (64) and CTC mode */
     TCCR1B |= (1 << WGM12) | (1 << CS11) | (1 << CS10);
 
-    /* Value to compare: (16 MHz . 10 ms) / 64 - 1 = 2499 -HEX-> 0x09C3 */
+    /* Set value to compare: (16 MHz . 10 ms) / 64 - 1 = 2499 -HEX-> 0x09C3 */
     OCR1A = 0x09C3;
 
     /* Set the bit 2 of TIMSK1 - Compare Interrupt Enable */

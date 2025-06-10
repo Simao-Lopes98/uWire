@@ -40,4 +40,6 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             const char name[12],
                             UINT16 stackSize);
 IMPORT void hexDumpStack(wTask_t *task);
+
+
 #endif /* UWIRE_H */
