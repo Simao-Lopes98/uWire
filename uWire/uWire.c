@@ -21,13 +21,14 @@ LOCAL void timerSetup (void);
 LOCAL void fillStackContext (wTask_t * taskCtrl);
 LOCAL wTask_t * createMainTask (void);
 LOCAL STATUS insertTaskNode (wTask_t * taskCtrl);
+LOCAL void wTaskYield(void);
 
 void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
 void wtaskSwitcher ( void );
+void wTickManagment (void);
 
 /* Globals */
 
-volatile UINT64 tick = 0;               /* Tick counter */
 wTask_t * volatile wCurrentTask = NULL; /* Save current taks stack */
 wTaskNode_t * volatile taskHeadNode = NULL;/* List of tasks TCB */
 
@@ -86,6 +87,7 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
     (void) strcpy (taskCtrl->name, name);
     taskCtrl->taskFn = taskFn;
     taskCtrl->stackSize = stackSize;
+    taskCtrl->taskStatus = TASK_RUNNING;
 
     taskCtrl->stackPtr = (void *) malloc (stackSize);
     if (taskCtrl->stackPtr == NULL)
@@ -134,9 +136,40 @@ IMPORT void hexDumpStack(wTask_t *task)
             (UINT8)((taskAddr >> 8) & 0xFF));
     }
 
+IMPORT STATUS wTaskDelay(UINT64 ticks)
+    {
+    if (ticks == 0U || wCurrentTask == NULL)
+        {
+        return ERROR;
+        }
+
+    /* Set to number of ticks to wait */
+    wCurrentTask->ticksToDelay = ticks;
+    /* Set the task to STOPPED */
+    wCurrentTask->taskStatus = TASK_STOPPED;
+    
+    /* Trigger context switch */
+    wTaskYield();
+
+    return OK;
+    }
+
 /*******************************************************************************
 * Private Tasks functions
 */
+
+LOCAL void wTaskYield(void)
+    {
+    cli();  /* Disable ISR */
+
+    /* 
+    * Set the timer counter register to the compare value to 
+    * trigger ISR and in turn the context switch
+    */
+    TCNT1 = TICK_ISR_TO_COMPARE;
+    
+    sei();  /* Enable ISR */
+    }
 
 /* Context filling routine */
 LOCAL void fillStackContext (wTask_t * taskCtrl)
@@ -187,6 +220,7 @@ LOCAL wTask_t * createMainTask (void)
     (void) strcpy (taskCtrl->name, "main");
     /* No need to setup the function ptr */
     taskCtrl->stackSize = MINIMAL_STACK_SIZE;
+    taskCtrl->taskStatus = TASK_RUNNING;
     taskCtrl->stackPtr = (void *) malloc (MINIMAL_STACK_SIZE);
     (void) memset (taskCtrl->stackPtr, 0, MINIMAL_STACK_SIZE);
     
@@ -229,30 +263,79 @@ LOCAL STATUS insertTaskNode (wTask_t * taskCtrl)
     }
 
 /*******************************************************************************
-* Tick and Context Saving/Restoring managment
+* Tick and Context Saving/Restoring management
 */
 
-void wtaskSwitcher ( void )
+/* Tick management routine - Decrements ticks from STOPPED tasks */
+void wTickManagment (void)
+    {
+    wTaskNode_t * node = taskHeadNode;
+
+    /* Iterate each task */
+    while (node != NULL)
+        {
+        wTask_t * task = node->task;
+
+        if (task->taskStatus == TASK_STOPPED && task->ticksToDelay > 0)
+            {
+            /* Decrement ticks to delay */
+            task->ticksToDelay--;
+            if (task->ticksToDelay == 0)
+                {
+                /* Mark the task as RUNNING */
+                task->taskStatus = TASK_RUNNING;
+                }
+            }
+        node = node->next;
+        }
+
+        
+    }
+
+/* Task Switcher - Routine goes through the task list */
+//TODO: Create to task lists. One for STOPPED tasks and one for RUNNING
+void wtaskSwitcher (void)
     {    
-    /* Point to the head node as the main task is the 1st to run */
     static wTaskNode_t * currentNode = NULL;
-    if (NULL == currentNode)
+    wTaskNode_t * node = NULL;
+
+    /* Point to the head node as the main task is the 1st to run */
+    if (currentNode == NULL)
         {
         currentNode = taskHeadNode;
         }
 
-    currentNode = currentNode->next != NULL ? currentNode->next : taskHeadNode;
+    /* Next node */
+    currentNode = (currentNode->next != NULL) ? 
+                currentNode->next : taskHeadNode;
+
+    node = currentNode;
     
-    wCurrentTask = currentNode->task;
+    /* Check if the task is stopped or running */
+    do
+    {
+    if (node->task->taskStatus == TASK_RUNNING)
+        {
+        wCurrentTask = node->task;
+        currentNode = node;
+        return;
+        }
+
+    node = (node->next != NULL) ? 
+                node->next : taskHeadNode;
+    } while (node != taskHeadNode);
+    
+    // TODO: If no task is found, run idle (need to create one)
+    // For now, use main
+    currentNode = node;
+    wCurrentTask = taskHeadNode->task;
     }
 
+/* ISR */
 void TIMER1_COMPA_vect (void)
     {
-    /* 
-    TODO: Tick has be updated outside, as the aditionall registers will 
-    conflict the stack
-    */
-    // tick++;
+    /* Manage tick */
+    wTickManagment();
 
     __asm__ __volatile__ (        
         /* --- Save Context --- */
@@ -307,9 +390,9 @@ void TIMER1_COMPA_vect (void)
     }
 
 /*******************************************************************************
-Timer Setup for tick counter 
-- 10 ms tick period
-- OCR1A = (Fcpu.tick)/prescaler - 1 
+* Timer Setup for tick counter 
+* 10 ms tick period
+* OCR1A = (Fcpu.tick)/prescaler - 1 
 */
 
 LOCAL void timerSetup (void)
@@ -326,7 +409,7 @@ LOCAL void timerSetup (void)
     TCCR1B |= (1 << WGM12) | (1 << CS11) | (1 << CS10);
 
     /* Set value to compare: (16 MHz . 10 ms) / 64 - 1 = 2499 -HEX-> 0x09C3 */
-    OCR1A = 0x09C3;
+    OCR1A = TICK_ISR_TO_COMPARE;
 
     /* Set the bit 2 of TIMSK1 - Compare Interrupt Enable */
     TIMSK1 |= (1 << OCIE1A);

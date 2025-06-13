@@ -56,36 +56,37 @@ int main (void)
 
 LOCAL void blinky1Task (void)
     {
-    printf ("Entering Bliny 1\n");
+    PORTB |= (1 << 5);
     while (1)
         {
         PORTB |= (1 << 5);
-        _delay_ms (50);
+        wTaskDelay (50 / TICK_MS);
         PORTB &= ~(1 << 5);
-        _delay_ms (50);
+        wTaskDelay (50 / TICK_MS);
         }
     }
 
 LOCAL void blinky2Task (void)
     {
-    printf ("Entering Bliny 2\n");
+    PORTB |= (1 << 4);
     while (1)
         {
         PORTB |= (1 << 4);
-        _delay_ms (500);
+        wTaskDelay (500 / TICK_MS);
         PORTB &= ~(1 << 4);
-        _delay_ms (500);
+        wTaskDelay (500 / TICK_MS);
         }
     }
 
 LOCAL void blinky3Task (void)
     {
+    PORTB |= (1 << 3);
     while (1)
         {
         PORTB |= (1 << 3);
-        _delay_ms (250);
+        wTaskDelay (250 / TICK_MS);
         PORTB &= ~(1 << 3);
-        _delay_ms (250);
+        wTaskDelay (250 / TICK_MS);
         }
     }
 
