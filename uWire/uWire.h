@@ -10,8 +10,9 @@
 #include "common.h"
 #include "uWire.h"
 
-#define TICK_MS    10           // 1 tick = 10 milliseconds
-#define MINIMAL_STACK_SIZE 256  // Minimal stack size
+#define TICK_MS    10           /* 1 tick = 10 milliseconds */
+#define MINIMAL_STACK_SIZE 256  /* Minimal stack size */
+#define IDLE_TASK_STACK 128     /* Stack size for idle */
 
 /* Set value to compare: (16 MHz . 10 ms) / 64 - 1 = 2499 -HEX-> 0x09C3 */
 #define TICK_ISR_TO_COMPARE 0x09C3
@@ -55,5 +56,6 @@ IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             UINT16 stackSize);
 IMPORT void hexDumpStack(wTask_t *task);
 IMPORT STATUS wTaskDelay(UINT64 ticks);
+IMPORT wTask_t * acquireTaskByName(const char * taskName);
 
 #endif /* UWIRE_H */

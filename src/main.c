@@ -47,25 +47,27 @@ int main (void)
     /* Main loop is used as Idle Task */
     while (1)
         {
-        printf ("In Main\n");
-        _delay_ms (1000);
+        // printf (" Task Status: %d - :%d\n", blinky2TaskCtrl->taskStatus, blinky2TaskCtrl->ticksToDelay);
+        wTaskDelay (2000 / TICK_MS);
         }
     
     return 0;
     }
 
+/* Orange LED */
 LOCAL void blinky1Task (void)
     {
     PORTB |= (1 << 5);
     while (1)
         {
         PORTB |= (1 << 5);
-        wTaskDelay (50 / TICK_MS);
+        wTaskDelay (1000 / TICK_MS);
         PORTB &= ~(1 << 5);
-        wTaskDelay (50 / TICK_MS);
+        wTaskDelay (1000 / TICK_MS);
         }
     }
 
+/* Red LED */
 LOCAL void blinky2Task (void)
     {
     PORTB |= (1 << 4);
@@ -78,6 +80,7 @@ LOCAL void blinky2Task (void)
         }
     }
 
+/* Blue LED */
 LOCAL void blinky3Task (void)
     {
     PORTB |= (1 << 3);

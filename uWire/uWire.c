@@ -20,37 +20,43 @@ Task management lib.
 LOCAL void timerSetup (void);
 LOCAL void fillStackContext (wTask_t * taskCtrl);
 LOCAL wTask_t * createMainTask (void);
+LOCAL wTask_t * createIdleTask (wTaskHandler taskFn, UINT16 stackSize);
 LOCAL STATUS insertTaskNode (wTask_t * taskCtrl);
 LOCAL void wTaskYield(void);
+LOCAL void idleTask (void);
 
 void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
 void wtaskSwitcher ( void );
-void wTickManagment (void);
+void wTickManagment ( void );
 
 /* Globals */
 
 wTask_t * volatile wCurrentTask = NULL; /* Save current taks stack */
-wTaskNode_t * volatile taskHeadNode = NULL;/* List of tasks TCB */
+wTaskNode_t * volatile taskHeadNode = NULL; /* List of tasks TCB */
+wTask_t * volatile wIdleTask = NULL; /* Idle task for scheduller */
 
 /*******************************************************************************
 * API Tasks functions
 */
 
+/* */
 IMPORT void initScheduler(void)
     {
     wTask_t * mainTaskCtrl = NULL;
+
+    /* Create idle task */
+    wIdleTask = createIdleTask (&idleTask, IDLE_TASK_STACK);
+    if (wIdleTask == NULL)
+        {
+        CRITICAL_LOG ("Fail creating task for idle");
+        return;        
+        }
 
     mainTaskCtrl = createMainTask();
     if (mainTaskCtrl == NULL)
         {
         CRITICAL_LOG ("Fail creating task for main");
         return;
-        }
-
-    if (insertTaskNode (mainTaskCtrl) != OK)
-        {
-        CRITICAL_LOG ("Fail creating task list");
-        return;        
         }
 
     /* Set the current 1st current task to main */
@@ -136,6 +142,7 @@ IMPORT void hexDumpStack(wTask_t *task)
             (UINT8)((taskAddr >> 8) & 0xFF));
     }
 
+
 IMPORT STATUS wTaskDelay(UINT64 ticks)
     {
     if (ticks == 0U || wCurrentTask == NULL)
@@ -154,10 +161,30 @@ IMPORT STATUS wTaskDelay(UINT64 ticks)
     return OK;
     }
 
+IMPORT wTask_t * acquireTaskByName(const char * taskName)
+    {
+    wTaskNode_t * node = taskHeadNode;
+
+    /* Iterate each task */
+    while (node != NULL)
+        {
+        wTask_t * task = node->task;
+
+        if (strncmp(taskName, task->name, 12) == 0)
+            {
+            return task; /* Task Found */
+            }
+        node = node->next;
+        }
+    
+    return NULL; /* No task Found */
+    }
+
 /*******************************************************************************
 * Private Tasks functions
 */
 
+/* Yield task - Calls the tick ISR straight up */
 LOCAL void wTaskYield(void)
     {
     cli();  /* Disable ISR */
@@ -166,7 +193,7 @@ LOCAL void wTaskYield(void)
     * Set the timer counter register to the compare value to 
     * trigger ISR and in turn the context switch
     */
-    TCNT1 = TICK_ISR_TO_COMPARE;
+    TCNT1 = (TICK_ISR_TO_COMPARE - 1);
     
     sei();  /* Enable ISR */
     }
@@ -223,8 +250,63 @@ LOCAL wTask_t * createMainTask (void)
     taskCtrl->taskStatus = TASK_RUNNING;
     taskCtrl->stackPtr = (void *) malloc (MINIMAL_STACK_SIZE);
     (void) memset (taskCtrl->stackPtr, 0, MINIMAL_STACK_SIZE);
+
+    if (insertTaskNode (taskCtrl) != OK)
+        {
+        CRITICAL_LOG ("Fail adding main task to the list");
+        return NULL;
+        }
     
     return taskCtrl;
+    }
+
+/* Idle task create - Is not added to the task list */
+LOCAL wTask_t * createIdleTask (wTaskHandler taskFn, UINT16 stackSize)
+    {
+    wTask_t * taskCtrl = NULL;
+    
+    /* Disable ISR */
+    cli();
+
+    /* Sanity checks */
+    if (taskFn == NULL)
+        {
+        CRITICAL_LOG("Fail creating Idle task - taskFn is NULL");
+        return NULL;
+        }
+
+    /* Create task ctrl */
+    taskCtrl = (wTask_t *) calloc (1, sizeof (wTask_t));
+    if ( taskCtrl == NULL)
+        {
+        CRITICAL_LOG("Fail creating Idle task - Fail allocating TCB");
+        return NULL;
+        }
+    
+    (void) strcpy (taskCtrl->name, "idle");
+    taskCtrl->taskFn = taskFn;
+    taskCtrl->stackSize = stackSize;
+    taskCtrl->taskStatus = TASK_RUNNING;
+
+    taskCtrl->stackPtr = (void *) malloc (stackSize);
+    if (taskCtrl->stackPtr == NULL)
+        {
+        CRITICAL_LOG("Fail creating Idle task - Fail to "
+                    "allocate heap for task stack");
+        free (taskCtrl);
+        return NULL;        
+        }
+    (void) memset (taskCtrl->stackPtr, 0, stackSize);
+
+    /* Fill stack context */
+    fillStackContext(taskCtrl);
+
+    /* Do not insert it on the task list */
+
+    /* Enable ISR */
+    sei();
+
+    return taskCtrl;    
     }
 
 /* Insert a task node at the end of the list */
@@ -262,6 +344,16 @@ LOCAL STATUS insertTaskNode (wTask_t * taskCtrl)
     return OK;
     }
 
+/* Idle Task - Default task for the scheduler - Has to be always RUNNING */
+__attribute__((optimize("O0"))) /* Do not allow compiler optimization */
+LOCAL void idleTask (void)
+    {
+    while (1)
+        {
+        __asm__ __volatile__ ("nop \n\t"); /* Perform NOP */
+        }
+    }
+
 /*******************************************************************************
 * Tick and Context Saving/Restoring management
 */
@@ -276,20 +368,25 @@ void wTickManagment (void)
         {
         wTask_t * task = node->task;
 
-        if (task->taskStatus == TASK_STOPPED && task->ticksToDelay > 0)
+        if (task->taskStatus == TASK_STOPPED && task->ticksToDelay >= 0)
             {
             /* Decrement ticks to delay */
-            task->ticksToDelay--;
+            
+            
             if (task->ticksToDelay == 0)
                 {
                 /* Mark the task as RUNNING */
                 task->taskStatus = TASK_RUNNING;
                 }
+            else
+                {
+                task->ticksToDelay--;
+                }
+                
             }
         node = node->next;
         }
 
-        
     }
 
 /* Task Switcher - Routine goes through the task list */
@@ -297,7 +394,7 @@ void wTickManagment (void)
 void wtaskSwitcher (void)
     {    
     static wTaskNode_t * currentNode = NULL;
-    wTaskNode_t * node = NULL;
+    wTaskNode_t * startNode = NULL;
 
     /* Point to the head node as the main task is the 1st to run */
     if (currentNode == NULL)
@@ -305,46 +402,41 @@ void wtaskSwitcher (void)
         currentNode = taskHeadNode;
         }
 
-    /* Next node */
+    /* Start from next task in round-robin order */
     currentNode = (currentNode->next != NULL) ? 
                 currentNode->next : taskHeadNode;
-
-    node = currentNode;
     
-    /* Check if the task is stopped or running */
-    do
+    startNode = currentNode;  // Remember where we started
+
+    do 
     {
-    if (node->task->taskStatus == TASK_RUNNING)
-        {
-        wCurrentTask = node->task;
-        currentNode = node;
-        return;
-        }
+        wTask_t * task = currentNode->task;
+        if (task->taskStatus == TASK_RUNNING)
+            {
+            wCurrentTask = task;
+            return;
+            }
 
-    node = (node->next != NULL) ? 
-                node->next : taskHeadNode;
-    } while (node != taskHeadNode);
-    
-    // TODO: If no task is found, run idle (need to create one)
-    // For now, use main
-    currentNode = node;
-    wCurrentTask = taskHeadNode->task;
+        currentNode = 
+                (currentNode->next != NULL) ? currentNode->next : taskHeadNode;
+    } while (currentNode != startNode);  /* Stop if it looped around */
+
+    /* No RUNNING task found — fallback to idle or first task */
+    wCurrentTask = wIdleTask;
     }
 
 /* ISR */
 void TIMER1_COMPA_vect (void)
     {
-    /* Manage tick */
-    wTickManagment();
 
-    __asm__ __volatile__ (        
+    __asm__ __volatile__ (
         /* --- Save Context --- */
-        "push r0               \n\t"              
-        "in   r0, __SREG__     \n\t"
-        "cli                   \n\t" /* disable interrupts during switch */
-        "push r0               \n\t"
-        "push r1               \n\t"
-        "clr  r1               \n\t"
+        "push r0                \n\t"              
+        "in   r0, __SREG__      \n\t"
+        "cli                    \n\t" /* disable interrupts during switch */
+        "push r0                \n\t"
+        "push r1                \n\t"
+        "clr  r1                \n\t"
         "push r2 \n\t push r3 \n\t push r4 \n\t push r5 \n\t"
         "push r6 \n\t push r7 \n\t push r8 \n\t push r9 \n\t"
         "push r10\n\t push r11\n\t push r12\n\t push r13\n\t"
@@ -361,6 +453,9 @@ void TIMER1_COMPA_vect (void)
         "st   x+, r0                \n\t"
         "in   r0, __SP_H__          \n\t"
         "st   x+, r0                \n\t"
+
+        /* Call Tick Management */
+        "rcall wTickManagment       \n\t"
 
         /* Call task switcher */
         "rcall wtaskSwitcher        \n\t"
