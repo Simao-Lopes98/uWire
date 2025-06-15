@@ -393,7 +393,6 @@ void wTickManagment (void)
     }
 
 /* Task Switcher - Routine goes through the task list */
-//TODO: Create to task lists. One for STOPPED tasks and one for RUNNING
 void wtaskSwitcher (void)
     {    
     static wTaskNode_t * currentNode = NULL;
