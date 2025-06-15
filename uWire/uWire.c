@@ -18,6 +18,8 @@ Task management lib.
 
 /* Forward section */
 LOCAL void timerSetup (void);
+LOCAL void timer1Setup (void);
+LOCAL void timer2Setup (void);
 LOCAL void fillStackContext (wTask_t * taskCtrl);
 LOCAL wTask_t * createMainTask (void);
 LOCAL wTask_t * createIdleTask (wTaskHandler taskFn, UINT16 stackSize);
@@ -25,9 +27,11 @@ LOCAL STATUS insertTaskNode (wTask_t * taskCtrl);
 LOCAL void wTaskYield(void);
 LOCAL void idleTask (void);
 
-void TIMER1_COMPA_vect( void ) __attribute__ ( ( signal, naked ) );
-void wtaskSwitcher ( void );
-void wTickManagment ( void );
+void TIMER1_COMPA_vect(void) __attribute__ ( ( signal, naked ) );
+void TIMER2_COMPA_vect(void) __attribute__ ( ( signal, naked ) );
+void wtaskSwitcher (void);
+void wTickManagment (void);
+void disableTimer2 (void);
 
 /* Globals */
 
@@ -39,7 +43,7 @@ wTask_t * volatile wIdleTask = NULL; /* Idle task for scheduller */
 * API Tasks functions
 */
 
-/* */
+/* Init uWire scheduler - Creates idle and main tasks - Starts tick timer */
 IMPORT void initScheduler(void)
     {
     wTask_t * mainTaskCtrl = NULL;
@@ -66,6 +70,7 @@ IMPORT void initScheduler(void)
     timerSetup();
     }
 
+/* Creates tasks */
 IMPORT wTask_t * wTaskCreate(wTaskHandler taskFn,
                             const char name[12],
                             UINT16 stackSize)
@@ -142,7 +147,6 @@ IMPORT void hexDumpStack(wTask_t *task)
             (UINT8)((taskAddr >> 8) & 0xFF));
     }
 
-
 IMPORT STATUS wTaskDelay(UINT64 ticks)
     {
     if (ticks == 0U || wCurrentTask == NULL)
@@ -152,6 +156,7 @@ IMPORT STATUS wTaskDelay(UINT64 ticks)
 
     /* Set to number of ticks to wait */
     wCurrentTask->ticksToDelay = ticks;
+    
     /* Set the task to STOPPED */
     wCurrentTask->taskStatus = TASK_STOPPED;
     
@@ -189,11 +194,11 @@ LOCAL void wTaskYield(void)
     {
     cli();  /* Disable ISR */
 
-    /* 
-    * Set the timer counter register to the compare value to 
-    * trigger ISR and in turn the context switch
-    */
-    TCNT1 = (TICK_ISR_TO_COMPARE - 1);
+    /* Set counter just before compare match */
+    TCNT2 = YIELD_ISR_TO_COMPARE - 1;
+    
+    /* Enable interrupt */
+    TIMSK2 |= (1 << OCIE2A);
     
     sei();  /* Enable ISR */
     }
@@ -355,7 +360,7 @@ LOCAL void idleTask (void)
     }
 
 /*******************************************************************************
-* Tick and Context Saving/Restoring management
+* Tick and Context Saving/Restoring Management
 */
 
 /* Tick management routine - Decrements ticks from STOPPED tasks */
@@ -370,9 +375,6 @@ void wTickManagment (void)
 
         if (task->taskStatus == TASK_STOPPED && task->ticksToDelay >= 0)
             {
-            /* Decrement ticks to delay */
-            
-            
             if (task->ticksToDelay == 0)
                 {
                 /* Mark the task as RUNNING */
@@ -380,6 +382,7 @@ void wTickManagment (void)
                 }
             else
                 {
+                /* Decrement ticks to delay */
                 task->ticksToDelay--;
                 }
                 
@@ -425,7 +428,13 @@ void wtaskSwitcher (void)
     wCurrentTask = wIdleTask;
     }
 
-/* ISR */
+/* Disable Timer 2 aux routine */
+void disableTimer2 (void)
+    {
+    TIMSK2 &= ~(1 << OCIE2A);
+    }
+
+/* Tick ISR */
 void TIMER1_COMPA_vect (void)
     {
 
@@ -484,6 +493,68 @@ void TIMER1_COMPA_vect (void)
         );
     }
 
+/* Yield ISR */
+void TIMER2_COMPA_vect (void)
+    {
+
+    __asm__ __volatile__ (
+        /* --- Save Context --- */
+        "push r0                \n\t"              
+        "in   r0, __SREG__      \n\t"
+        "cli                    \n\t" /* disable interrupts during switch */
+        "push r0                \n\t"
+        "push r1                \n\t"
+        "clr  r1                \n\t"
+        "push r2 \n\t push r3 \n\t push r4 \n\t push r5 \n\t"
+        "push r6 \n\t push r7 \n\t push r8 \n\t push r9 \n\t"
+        "push r10\n\t push r11\n\t push r12\n\t push r13\n\t"
+        "push r14\n\t push r15\n\t push r16\n\t push r17\n\t"
+        "push r18\n\t push r19\n\t push r20\n\t push r21\n\t"
+        "push r22\n\t push r23\n\t push r24\n\t push r25\n\t"
+        "push r26\n\t push r27\n\t push r28\n\t push r29\n\t"
+        "push r30\n\t push r31\n\t"
+
+        /* Save stack pointer to wCurrentTask->stackPtr */
+        "lds  r26, wCurrentTask     \n\t"
+        "lds  r27, wCurrentTask+1   \n\t"
+        "in   r0, __SP_L__          \n\t"
+        "st   x+, r0                \n\t"
+        "in   r0, __SP_H__          \n\t"
+        "st   x+, r0                \n\t"
+
+        /* Disable Timer2 */
+        "rcall disableTimer2        \n\t"
+        
+        /* Call Tick Management */
+        "rcall wTickManagment       \n\t"
+
+        /* Call task switcher */
+        "rcall wtaskSwitcher        \n\t"
+
+        /* Restore SP from wCurrentTask->stackPtr */
+        "lds  r26, wCurrentTask     \n\t"
+        "lds  r27, wCurrentTask+1   \n\t"
+        "ld   r28, x+               \n\t"  // _SP_L_
+        "out  __SP_L__, r28         \n\t"
+        "ld   r29, x+               \n\t"  // _SP_H_
+        "out  __SP_H__, r29         \n\t"
+
+        /* Restore Context */
+        "pop r31\n\t pop r30\n\t pop r29\n\t pop r28\n\t"
+        "pop r27\n\t pop r26\n\t pop r25\n\t pop r24\n\t"
+        "pop r23\n\t pop r22\n\t pop r21\n\t pop r20\n\t"
+        "pop r19\n\t pop r18\n\t pop r17\n\t pop r16\n\t"
+        "pop r15\n\t pop r14\n\t pop r13\n\t pop r12\n\t"
+        "pop r11\n\t pop r10\n\t pop r9 \n\t pop r8 \n\t"
+        "pop r7 \n\t pop r6 \n\t pop r5 \n\t pop r4 \n\t"
+        "pop r3 \n\t pop r2 \n\t pop r1 \n\t"
+        "pop r0                     \n\t"
+        "out __SREG__, r0           \n\t"
+        "pop r0                     \n\t"
+        "reti                       \n\t"               /* Exit ISR */
+        );
+    }
+
 /*******************************************************************************
 * Timer Setup for tick counter 
 * 10 ms tick period
@@ -495,10 +566,23 @@ LOCAL void timerSetup (void)
     /* Disable ISR */
     cli();
 
+    /* Tick Timer Setup */
+    timer1Setup();
+
+    /* Yield ISR Setup */
+    timer2Setup();
+
+    /* Enable ISR */
+    sei();
+    }
+
+/* Timer for tick - 10 ms period */
+LOCAL void timer1Setup (void)
+    {
     /* Reset registers */
     TCCR1A = 0;
     TCCR1B = 0;
-    TCNT1 = 0;
+    TCNT1  = 0;
 
     /* Set Prescaler (64) and CTC mode */
     TCCR1B |= (1 << WGM12) | (1 << CS11) | (1 << CS10);
@@ -507,8 +591,26 @@ LOCAL void timerSetup (void)
     OCR1A = TICK_ISR_TO_COMPARE;
 
     /* Set the bit 2 of TIMSK1 - Compare Interrupt Enable */
-    TIMSK1 |= (1 << OCIE1A);
+    TIMSK1 |= (1 << OCIE1A);   
+    }
 
-    /* Enable ISR */
-    sei();
+/* Software timer to handle yield */
+LOCAL void timer2Setup (void)
+    {
+    
+    /* Reset registers */
+    TCCR2A = 0;
+    TCCR2B = 0;
+    TCNT2  = 0;
+    
+    /* CTC mode */
+    TCCR2A |= (1 << WGM21);
+    
+    /* Set Prescaler (64) and CTC mode  */
+    TCCR2B |= (1 << CS22);
+
+    OCR2A  = YIELD_ISR_TO_COMPARE;
+
+    /* Disable ISR - Should only be enabled by yield function */
+    TIMSK2 &= ~(1 << OCIE2A);
     }

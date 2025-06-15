@@ -47,7 +47,6 @@ int main (void)
     /* Main loop is used as Idle Task */
     while (1)
         {
-        // printf (" Task Status: %d - :%d\n", blinky2TaskCtrl->taskStatus, blinky2TaskCtrl->ticksToDelay);
         wTaskDelay (2000 / TICK_MS);
         }
     

@@ -17,6 +17,9 @@
 /* Set value to compare: (16 MHz . 10 ms) / 64 - 1 = 2499 -HEX-> 0x09C3 */
 #define TICK_ISR_TO_COMPARE 0x09C3
 
+/* Yield compare value */
+#define YIELD_ISR_TO_COMPARE 0xFA
+
 /* typedefs */
 
 /* Task Function pointer */
