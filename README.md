@@ -22,6 +22,12 @@ Create a bare-metal task scheduler where each task runs cooperatively—meaning 
 * Create task status ✔
 * Create a task delay based on ticks ✔
 
+## Phase 4 Goals
+* Separate tasks into ready and blocked queues
+* Add task creation and deletion at runtime
+* Implement critical sections and atomic operations for safe access to shared data
+* Add debug hooks and runtime metrics (e.g., tick count, CPU usage)
+
 # Make Commands
 
 To compile
